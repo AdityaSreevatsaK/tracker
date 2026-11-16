@@ -7,14 +7,17 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { isPackageName } = require("../../site/logic.js");
-const { packageFrom404Path, commandFor404Path, render404 } = require("../../site/not-found.js");
+const { packageFrom404Path, redirectFor404Path, commandFor404Path, render404 } = require("../../site/not-found.js");
 const site = path.join(__dirname, "../../site");
 
 function mockDocument() {
   const elements = new Map();
   return {
     getElementById(id) {
-      if (!elements.has(id)) elements.set(id, { textContent: "" });
+      if (!elements.has(id)) {
+        const attrs = {};
+        elements.set(id, { textContent: "", attrs, setAttribute: (k, v) => { attrs[k] = v; } });
+      }
       return elements.get(id);
     },
   };
@@ -69,4 +72,56 @@ test("404 classic scripts compile together without global lexical collisions", (
   const logic = fs.readFileSync(path.join(site, "logic.js"), "utf8");
   const notFound = fs.readFileSync(path.join(site, "not-found.js"), "utf8");
   assert.doesNotThrow(() => new vm.Script(logic + "\n;\n" + notFound));
+});
+
+test("a scanned package typed in another spelling goes to its page, not a false 'not scanned'", () => {
+  // Pages live only at the PEP 503 name, and Pages paths are case-sensitive.
+  assert.equal(redirectFor404Path("/tracker/p/PyYAML/"), "/tracker/p/pyyaml/");
+  assert.equal(redirectFor404Path("/tracker/p/importlib_metadata"), "/tracker/p/importlib-metadata/");
+  assert.equal(redirectFor404Path("/tracker/p/Zope.Interface/"), "/tracker/p/zope-interface/");
+  assert.equal(redirectFor404Path("/tracker/p/some%2Dpackage/"), "/tracker/p/some-package/");
+  // Already canonical (a real miss): stay, so the canonical page's own 404 can't loop.
+  assert.equal(redirectFor404Path("/tracker/p/pyyaml/"), null);
+  assert.equal(redirectFor404Path("/tracker/p/pyyaml"), null);
+  assert.equal(redirectFor404Path("/tracker/p/%3Cscript%3E/"), null);
+  const replaced = [];
+  const doc = mockDocument();
+  render404(doc, "/tracker/p/PyYAML/", { replace: (url) => replaced.push(url) });
+  assert.deepEqual(replaced, ["/tracker/p/pyyaml/"]);
+  assert.equal(doc.getElementById("not-found-description").textContent, "");  // nothing claimed before leaving
+});
+
+test("the lookup link carries the name to the home page's own lookup", () => {
+  const doc = mockDocument();
+  render404(doc, "/tracker/p/some-package/", { replace: () => assert.fail("no redirect for a canonical name") });
+  assert.equal(doc.getElementById("not-found-lookup").attrs.href, "/tracker/#package=some-package");
+  const plain = mockDocument();
+  render404(plain, "/tracker/other/", { replace: () => assert.fail("no redirect") });
+  assert.equal(plain.getElementById("not-found-lookup").attrs.href, undefined);
+});
+
+test("in the browser, logic.js and not-found.js together render the page", () => {
+  // The browser path: no require(), isPackageName from logic.js as a global, render on load.
+  const doc = mockDocument();
+  const replaced = [];
+  const context = vm.createContext({
+    document: doc,
+    location: { pathname: "/tracker/p/Django/", replace: (url) => replaced.push(url) },
+    decodeURIComponent,
+  });
+  for (const file of ["logic.js", "not-found.js"]) {
+    vm.runInContext(fs.readFileSync(path.join(site, file), "utf8"), context);
+  }
+  assert.deepEqual(replaced, ["/tracker/p/django/"]);
+  const miss = mockDocument();
+  const context2 = vm.createContext({
+    document: miss,
+    location: { pathname: "/tracker/p/no-such-package/", replace: () => assert.fail("no redirect") },
+    decodeURIComponent,
+  });
+  for (const file of ["logic.js", "not-found.js"]) {
+    vm.runInContext(fs.readFileSync(path.join(site, file), "utf8"), context2);
+  }
+  assert.equal(miss.getElementById("not-found-command").textContent, "uvx wheelgap no-such-package -t all --explain");
+  assert.match(miss.getElementById("not-found-description").textContent, /^No page for no-such-package/);
 });
