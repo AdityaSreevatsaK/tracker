@@ -1,0 +1,10 @@
+/* Reuse the tracker's palette and layout from style.css. */
+.not-found-command {
+  margin: 14px 0;
+  padding: 12px 14px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+}

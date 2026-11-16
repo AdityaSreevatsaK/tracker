@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Not found | wheelgap tracker</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/tracker/style.css">
+  <link rel="stylesheet" href="/tracker/not-found.css">
+  <link rel="icon" href="/tracker/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <header class="wrap">
+    <p class="eyebrow"><a href="https://github.com/wheelgap/wheelgap">wheelgap</a> · <a href="/tracker/">tracker</a></p>
+    <h1>Not found</h1>
+    <p class="lede" id="not-found-description">This page couldn't be found.</p>
+  </header>
+
+  <main class="wrap">
+    <section class="card" aria-labelledby="not-found-next">
+      <h2 id="not-found-next">Check a package yourself</h2>
+      <p class="note">wheelgap can check packages beyond the 5,000 in this site's nightly scan.</p>
+      <pre class="not-found-command"><code id="not-found-command">uvx wheelgap NAME -t all --explain</code></pre>
+      <p><a href="/tracker/#omni-checker">Look up a package</a> · <a href="/tracker/check/">Check a repository</a></p>
+    </section>
+  </main>
+
+  <script src="/tracker/logic.js"></script>
+  <script src="/tracker/not-found.js"></script>
+</body>
+</html>
