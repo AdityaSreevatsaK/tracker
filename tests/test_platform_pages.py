@@ -59,7 +59,7 @@ class PlatformPageTests(unittest.TestCase):
         self.assertIn("0 of the 2 top", win)
         self.assertIn('href="../../p/typing-extensions/"', win)
         self.assertIn("builds from source", win)
-        self.assertIn("can't install", win)
+        self.assertIn("can&#x27;t install", win)
         self.assertNotIn("bad<script>", win)
         self.assertNotIn("<script", win)
         self.assertIn("No missing-wheel entries", linux)
