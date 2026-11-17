@@ -90,6 +90,28 @@ function bundledInfo(raw) {
   return out;
 }
 
+// Verified gap-wheel index entries for the exact release and target. Third-party JSON is always untrusted.
+function gapWheelTargets(raw, packageInfo, targets) {
+  if (!raw || raw.schema !== 1 || !Array.isArray(raw.wheels) || raw.wheels.length > 20000 ||
+      !packageInfo || !isPackageName(packageInfo.name) ||
+      typeof packageInfo.version !== "string" || !PINNED_VERSION.test(packageInfo.version) ||
+      !Array.isArray(targets) || !Array.isArray(packageInfo.results)) return [];
+  const canonical = (name) => name.toLowerCase().replace(/[-_.]+/g, "-");
+  const wanted = canonical(packageInfo.name);
+  const available = new Set();
+  for (const item of raw.wheels) {
+    if (!item || typeof item !== "object" || !isPackageName(item.name) ||
+        typeof item.version !== "string" || item.version !== packageInfo.version ||
+        typeof item.target !== "string" || item.target.length > 100 ||
+        typeof item.wheel !== "string" || !/^[A-Za-z0-9._-]{1,200}\\.whl$/.test(item.wheel) ||
+        typeof item.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(item.sha256)) continue;
+    if (canonical(item.name) === wanted) available.add(item.target);
+  }
+  return targets.filter((target, index) => target && typeof target.label === "string" &&
+    ["source", "missing"].includes(packageInfo.results[index]) && available.has(target.label))
+    .map((target) => target.label);
+}
+
 // The line under a bundled cell; same text as describe() in scripts/pyodide_locks.py.
 function bundledDetail(info) {
   if (!info || !isText(info.pyodide) || !isText(info.bundled_version)) return "";
@@ -149,7 +171,7 @@ function labVerdict(r) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, whyCommand, pyodideFooter,
+    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, gapWheelTargets, whyCommand, pyodideFooter,
     labVerdict,
   };
 }
