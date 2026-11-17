@@ -332,24 +332,43 @@ test("an invalid pin never reaches the checker's command (#57)", async () => {
   }
 });
 
-test("home lookup shows whole-tree blockers, safe via paths, and release hints (#92)", async () => {
-  const pkg = coverage().packages[0];
+// A scanned package with a `source` cell, and a package document giving that target blockers and an `older`
+// way out (the only kind the scan writes), plus a not_checked target.
+function wholeTreeCase() {
   const data = coverage();
-  const gapIndex = pkg.results.findIndex((s) => s === "source" || s === "missing");
-  const chosen = gapIndex >= 0 ? data.targets[gapIndex].label : data.targets[0].label;
+  const pkg = data.packages.find((p) => !p.error && p.results.includes("source"));
+  const gap = data.targets[pkg.results.indexOf("source")].label;
+  const unchecked = data.targets.find((t) => t.label !== gap).label;
   const details = { schema: 1, name: pkg.name.toLowerCase().replace(/[-_.]+/g, "-"), version: pkg.version,
-    install: { [chosen]: { status: "source", blockers: [{
+    install: { [gap]: { status: "source", blockers: [{
       name: "<dependency>", version: "1&2", status: "source", via: [pkg.name, "Middle&", "<dependency>"],
-    }] }, "3.14 win-arm64": { status: "not_checked", blockers: [] } },
-    way_out: { [chosen]: { kind: "newer", release: "999.9" } } };
+    }] }, [unchecked]: { status: "not_checked", blockers: [] } },
+    way_out: { [gap]: { kind: "older", release: "0.1" } } };
+  return { pkg, gap, unchecked, details };
+}
+const reEscape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+test("home lookup shows whole-tree blockers, safe via paths, and release hints (#92)", async () => {
+  const { pkg, gap, unchecked, details } = wholeTreeCase();
   const page = await loadPage(`#package=${pkg.name}`, details);
   await new Promise((resolve) => setImmediate(resolve));
   const html = page.get("lookup").innerHTML;
   assert.match(html, /Install coverage with dependencies/);
+  assert.match(html, new RegExp(`<th scope="row">${reEscape(gap)}</th><td><span class="status s-source">Builds from source</span>`));
   assert.match(html, /builds from source/);
   assert.match(html, /&lt;dependency&gt;==1&amp;2/);
   assert.match(html, /Middle&amp;/);
   assert.doesNotMatch(html, /<dependency>/);
-  assert.match(html, /Not checked/);
-  if (gapIndex >= 0) assert.match(html, /Upgrade to 999\.9 for a wheel here/);
+  assert.match(html, new RegExp(`<th scope="row">${reEscape(unchecked)}</th><td><span class="status s-unknown">Not checked</span>`));
+  assert.match(html, /<small class="bver" style="[^"]*color:var\(--text-muted\)[^"]*">0\.1 is the last release with a wheel here\.<\/small>/);
+});
+
+test("a pinned lookup shows neither whole-tree results nor way-out hints (#92)", async () => {
+  const { pkg, details } = wholeTreeCase();
+  const page = await loadPage(`#package=${pkg.name}==0.0.0`, details);
+  await new Promise((resolve) => setImmediate(resolve));
+  const html = page.get("lookup").innerHTML;
+  assert.match(html, /not 0\.0\.0/);
+  assert.doesNotMatch(html, /Install coverage with dependencies/);
+  assert.doesNotMatch(html, /is the last release with a wheel here/);
 });

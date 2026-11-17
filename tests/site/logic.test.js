@@ -195,3 +195,13 @@ test("lookup whole-tree data preserves not_checked and safely validates way-out 
   assert.equal(results[2].wayOut, null);
   assert.deepEqual(logic.lookupInstallData({ ...doc, version: "1.0" }, pkg, targets), []);
 });
+
+test("lookup whole-tree data keeps every blocker, like the package pages (#92)", () => {
+  const pkg = { name: "pkg", version: "1.0", results: ["source"] };
+  const targets = [{ label: "3.14 win-arm64" }];
+  const blockers = Array.from({ length: 12 }, (_, i) => ({ name: `dep${i}`, version: null, status: "source", via: ["pkg", `dep${i}`] }));
+  const doc = { schema: 1, name: "pkg", version: "1.0", install: { "3.14 win-arm64": { status: "source", blockers } } };
+  const [row] = logic.lookupInstallData(doc, pkg, targets);
+  assert.equal(row.blockers.length, 12);
+  assert.equal(row.blockers[11].name, "dep11");
+});

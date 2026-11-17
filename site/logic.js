@@ -102,14 +102,14 @@ function lookupInstallData(raw, pkg, targets) {
     const row = Object.hasOwn(install, target.label) ? install[target.label] : null;
     const status = row && ["wheel", "source", "missing", "not_checked"].includes(row.status)
       ? row.status : "not_checked";
-    const blockers = status !== "not_checked" && row && Array.isArray(row.blockers) ? row.blockers.slice(0, 8)
+    const blockers = status !== "not_checked" && row && Array.isArray(row.blockers) ? row.blockers
       .filter((blocker) => blocker && typeof blocker.name === "string" && blocker.name.length < 200 &&
         ["source", "missing"].includes(blocker.status))
       .map((blocker) => ({
         name: blocker.name,
         version: typeof blocker.version === "string" && blocker.version.length < 80 ? blocker.version : null,
         status: blocker.status,
-        via: Array.isArray(blocker.via) ? blocker.via.slice(0, 10)
+        via: Array.isArray(blocker.via) ? blocker.via
           .filter((name) => typeof name === "string" && name.length < 200) : [],
       })) : [];
     const hint = hints[target.label];
