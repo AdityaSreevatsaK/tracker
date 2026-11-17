@@ -191,3 +191,35 @@ test("published gap wheels require exact version, target and a real PyPI gap (#1
     assert.deepEqual(logic.gapWheelTargets(bad, pkg, targets), []);
   }
 });
+
+test("lookup whole-tree data preserves not_checked and safely validates way-out hints (#92)", () => {
+  const pkg = { name: "My_Pkg", version: "2.0", results: ["source", "missing", "wheel"] };
+  const targets = ["3.14 win-arm64", "3.14 musl-aarch64", "3.14 linux-x86_64"].map((label) => ({ label }));
+  const doc = { schema: 1, name: "my-pkg", version: "2.0",
+    install: {
+      "3.14 win-arm64": { status: "source", blockers: [{ name: "<unsafe>", version: "1&2", status: "source", via: ["My_Pkg", "<unsafe>"] }] },
+      "3.14 musl-aarch64": { status: "not_checked", blockers: [] },
+      "3.14 linux-x86_64": { status: "wheel", blockers: [] },
+    },
+    way_out: { "3.14 win-arm64": { kind: "older", release: "1.9" }, "3.14 musl-aarch64": { kind: "newer", release: "2.1" },
+      "3.14 linux-x86_64": { kind: "newer", release: "999" } },
+  };
+  const results = logic.lookupInstallData(doc, pkg, targets);
+  assert.equal(results[0].status, "source");
+  assert.deepEqual(results[0].blockers[0].via, ["My_Pkg", "<unsafe>"]);
+  assert.deepEqual(results[0].wayOut, { kind: "older", release: "1.9" });
+  assert.equal(results[1].status, "not_checked");
+  assert.deepEqual(results[1].blockers, []);
+  assert.equal(results[2].wayOut, null);
+  assert.deepEqual(logic.lookupInstallData({ ...doc, version: "1.0" }, pkg, targets), []);
+});
+
+test("lookup whole-tree data keeps every blocker, like the package pages (#92)", () => {
+  const pkg = { name: "pkg", version: "1.0", results: ["source"] };
+  const targets = [{ label: "3.14 win-arm64" }];
+  const blockers = Array.from({ length: 12 }, (_, i) => ({ name: `dep${i}`, version: null, status: "source", via: ["pkg", `dep${i}`] }));
+  const doc = { schema: 1, name: "pkg", version: "1.0", install: { "3.14 win-arm64": { status: "source", blockers } } };
+  const [row] = logic.lookupInstallData(doc, pkg, targets);
+  assert.equal(row.blockers.length, 12);
+  assert.equal(row.blockers[11].name, "dep11");
+});
