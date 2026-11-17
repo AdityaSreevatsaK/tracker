@@ -173,3 +173,21 @@ test("splitSpec looks a pinned query up by its name (#57)", () => {
   assert.deepEqual(logic.splitSpec(" numpy "), ["numpy", null]);
   assert.deepEqual(logic.splitSpec("Django==5.1.3"), ["Django", "5.1.3"]);
 });
+
+test("published gap wheels require exact version, target and a real PyPI gap (#129)", () => {
+  const pkg = { name: "Typing_Extensions", version: "1.2.3", results: ["source", "wheel", "missing", "unknown"] };
+  const targets = ["3.14 win-arm64", "3.13 win-arm64", "3.14 musl-aarch64", "3.15 win-arm64"].map((label) => ({ label }));
+  const good = (name, version, target) => ({ name, version, target, wheel: "typing_extensions-1.2.3-cp314.whl", sha256: "a".repeat(64) });
+  const doc = { schema: 1, wheels: [
+    good("typing-extensions", "1.2.3", "3.14 win-arm64"),
+    good("typing-extensions", "1.2.3", "3.13 win-arm64"),
+    good("typing-extensions", "1.2.3", "3.14 musl-aarch64"),
+    good("typing-extensions", "9.9.9", "3.15 win-arm64"),
+    good("other", "1.2.3", "3.15 win-arm64"),
+    { ...good("typing-extensions", "1.2.3", "3.15 win-arm64"), wheel: "<script>" },
+  ] };
+  assert.deepEqual(logic.gapWheelTargets(doc, pkg, targets), ["3.14 win-arm64", "3.14 musl-aarch64"]);
+  for (const bad of [null, [], {}, { wheels: [] }, { schema: 2, wheels: doc.wheels }, { schema: 1, wheels: null }]) {
+    assert.deepEqual(logic.gapWheelTargets(bad, pkg, targets), []);
+  }
+});
