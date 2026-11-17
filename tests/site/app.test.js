@@ -232,7 +232,7 @@ async function loadPage(hash, packageData = null) {
       createElement: element,
     },
     fetch: async (url) => {
-      if (/^data\\/packages\\/[a-z0-9-]+\\.json$/.test(url))
+      if (url.startsWith("data/packages/") && url.endsWith(".json"))
         return { ok: packageData !== null, json: async () => packageData };
       const file = path.join(ROOT, url);
       if (!/^data\/[a-z]+\.json$/.test(url) || !fs.existsSync(file)) return { ok: false, json: async () => null };
