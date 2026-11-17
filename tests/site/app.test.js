@@ -210,7 +210,7 @@ function element() {
   };
 }
 
-async function loadPage(hash) {
+async function loadPage(hash, packageData = null) {
   const elements = new Map();
   const location = { hash };
   const get = (id) => {
@@ -232,6 +232,8 @@ async function loadPage(hash) {
       createElement: element,
     },
     fetch: async (url) => {
+      if (/^data\\/packages\\/[a-z0-9-]+\\.json$/.test(url))
+        return { ok: packageData !== null, json: async () => packageData };
       const file = path.join(ROOT, url);
       if (!/^data\/[a-z]+\.json$/.test(url) || !fs.existsSync(file)) return { ok: false, json: async () => null };
       const json = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -328,4 +330,26 @@ test("an invalid pin never reaches the checker's command (#57)", async () => {
   for (const id of ["omni-answer", "omni-minimized-summary", "lookup"]) {
     assert.doesNotMatch(page.get(id).innerHTML, /evil\.example/, id);
   }
+});
+
+test("home lookup shows whole-tree blockers, safe via paths, and release hints (#92)", async () => {
+  const pkg = coverage().packages[0];
+  const data = coverage();
+  const gapIndex = pkg.results.findIndex((s) => s === "source" || s === "missing");
+  const chosen = gapIndex >= 0 ? data.targets[gapIndex].label : data.targets[0].label;
+  const details = { schema: 1, name: pkg.name.toLowerCase().replace(/[-_.]+/g, "-"), version: pkg.version,
+    install: { [chosen]: { status: "source", blockers: [{
+      name: "<dependency>", version: "1&2", status: "source", via: [pkg.name, "Middle&", "<dependency>"],
+    }] }, "3.14 win-arm64": { status: "not_checked", blockers: [] } },
+    way_out: { [chosen]: { kind: "newer", release: "999.9" } } };
+  const page = await loadPage(`#package=${pkg.name}`, details);
+  await new Promise((resolve) => setImmediate(resolve));
+  const html = page.get("lookup").innerHTML;
+  assert.match(html, /Install coverage with dependencies/);
+  assert.match(html, /builds from source/);
+  assert.match(html, /&lt;dependency&gt;==1&amp;2/);
+  assert.match(html, /Middle&amp;/);
+  assert.doesNotMatch(html, /<dependency>/);
+  assert.match(html, /Not checked/);
+  if (gapIndex >= 0) assert.match(html, /Upgrade to 999\.9 for a wheel here/);
 });
