@@ -173,3 +173,25 @@ test("splitSpec looks a pinned query up by its name (#57)", () => {
   assert.deepEqual(logic.splitSpec(" numpy "), ["numpy", null]);
   assert.deepEqual(logic.splitSpec("Django==5.1.3"), ["Django", "5.1.3"]);
 });
+
+test("lookup whole-tree data preserves not_checked and safely validates way-out hints (#92)", () => {
+  const pkg = { name: "My_Pkg", version: "2.0", results: ["source", "missing", "wheel"] };
+  const targets = ["3.14 win-arm64", "3.14 musl-aarch64", "3.14 linux-x86_64"].map((label) => ({ label }));
+  const doc = { schema: 1, name: "my-pkg", version: "2.0",
+    install: {
+      "3.14 win-arm64": { status: "source", blockers: [{ name: "<unsafe>", version: "1&2", status: "source", via: ["My_Pkg", "<unsafe>"] }] },
+      "3.14 musl-aarch64": { status: "not_checked", blockers: [] },
+      "3.14 linux-x86_64": { status: "wheel", blockers: [] },
+    },
+    way_out: { "3.14 win-arm64": { kind: "older", release: "1.9" }, "3.14 musl-aarch64": { kind: "newer", release: "2.1" },
+      "3.14 linux-x86_64": { kind: "newer", release: "999" } },
+  };
+  const results = logic.lookupInstallData(doc, pkg, targets);
+  assert.equal(results[0].status, "source");
+  assert.deepEqual(results[0].blockers[0].via, ["My_Pkg", "<unsafe>"]);
+  assert.deepEqual(results[0].wayOut, { kind: "older", release: "1.9" });
+  assert.equal(results[1].status, "not_checked");
+  assert.deepEqual(results[1].blockers, []);
+  assert.equal(results[2].wayOut, null);
+  assert.deepEqual(logic.lookupInstallData({ ...doc, version: "1.0" }, pkg, targets), []);
+});
