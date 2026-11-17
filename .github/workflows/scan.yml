@@ -252,12 +252,12 @@ jobs:
           python3 scripts/build_csv.py data/coverage.json _site/data/coverage.csv
           python3 scripts/build_most_wanted.py data/coverage.json _site/data/most-wanted.json
           python3 scripts/build_badges.py data/coverage.json _site/badge
-          python3 scripts/build_pages.py data/coverage.json _site
-          python3 scripts/build_campaigns.py data/coverage.json data/history.json data/changes.json campaigns.toml _site
-          # Extra page: the old gap wheels index, kept working since the wheels moved to wheelgap/wheels. Its data
-          # comes from that site; a failed download or malformed file warns rather than stopping the deploy.
+          # The same verified wheel index is used for package-page hints and the legacy index.
           curl -sfL --max-time 60 -o "$RUNNER_TEMP/gap-wheels.json" https://wheelgap.github.io/wheels/data/gap-wheels.json \
             || echo "::warning::couldn't download gap-wheels.json from wheelgap.github.io/wheels"
+          python3 scripts/build_pages.py data/coverage.json _site notes "$RUNNER_TEMP/gap-wheels.json"
+          python3 scripts/build_campaigns.py data/coverage.json data/history.json data/changes.json campaigns.toml _site
+          # Extra page: the legacy gap wheel index. Missing/malformed data only produces a warning.
           if ! python3 scripts/build_gap_index.py "$RUNNER_TEMP/gap-wheels.json" _site; then
             echo "::warning::build_gap_index failed, so the old gap wheels index isn't published this time"
           fi
