@@ -890,7 +890,6 @@ function renderLookup(query, extra = null) {
     });
   }
 }
-}
 
 // Deep Inspection Drawer
 function openDrawer(packageName) {
