@@ -592,7 +592,7 @@ def page(
         return f'<td><span class="status s-{e(s)}">{e(STATUS_TEXT.get(s, s))}</span>{small}</td>'
 
     rows = "\n".join(
-        f'          <tr><th scope="row">{e(PLATFORM_NAMES[pl])}</th>{"".join(cell(py, pl) for py in pys)}</tr>'
+        f'          <tr><th scope="row"><a href="../../platforms/{e(pl)}/">{e(PLATFORM_NAMES[pl])}</a></th>{"".join(cell(py, pl) for py in pys)}</tr>'
         for pl in platforms
     )
     sub = f"#{package['rank']} by downloads"
