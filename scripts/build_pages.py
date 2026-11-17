@@ -24,6 +24,7 @@ if __package__:  # imported as scripts.build_pages (the tests)
     from . import (
         build_badges,
         build_campaigns,
+        build_gap_index,
         build_lab,
         build_lookup,
         check_notes,
@@ -33,6 +34,7 @@ if __package__:  # imported as scripts.build_pages (the tests)
 else:  # run as python scripts/build_pages.py
     import build_badges
     import build_campaigns
+    import build_gap_index
     import build_lab
     import build_lookup
     import check_notes
@@ -430,7 +432,7 @@ def read_gap_wheels(path: Path | None) -> set[tuple[str, str, str]]:
         return set()
     matches = set()
     for item in data["wheels"]:
-        if not isinstance(item, dict):
+        if not build_gap_index.usable(item):
             continue
         name, version, target = item.get("name"), item.get("version"), item.get("target")
         if not all(isinstance(value, str) and value for value in (name, version, target)):
@@ -561,7 +563,7 @@ def page(
     gap_section = (
         '    <section class="notes"><h2>Published gap wheels</h2>'
         '<p>A verified gap wheel is available for the highlighted target(s). '
-        '<a href="https://wheelgap.github.io/wheels/">View the gap wheel index</a>.</p></section>\\n'
+        '<a href="https://wheelgap.github.io/wheels/">View the gap wheel index</a>.</p></section>\n'
         if gap_targets else ""
     )
     # Only where the cell still says source: a wheel uploaded since the lab ran (or a target the scan dropped) makes
