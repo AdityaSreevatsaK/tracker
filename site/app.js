@@ -50,6 +50,10 @@ function statusBadge(status) {
 
 // pyodide: data/pyodide.json through pyodideReleases(), {python: {pyodide, lock}} for each pinned Pyodide release.
 const bundledCache = new Map(); // canonical name -> bundledInfo() of its data/packages/<name>.json
+let gapWheelDoc = null;
+let gapWheelPromise = null;
+const GAP_WHEEL_INDEX = "https://wheelgap.github.io/wheels/simple/";
+
 const state = {
   data: null,
   history: [],
@@ -782,6 +786,14 @@ function badgeMarkdown(p) {
 // Deep Package Inspection (used in drawer and card)
 function buildPackageCardHTML(p, extra = null, pinNote = "") {
   const pys = pythons();
+  const matches = !pinNote ? gapWheelTargets(gapWheelDoc, p, state.data.targets) : [];
+  const available = new Set(matches);
+  const gapHint = matches.length
+    ? `<section class="card-gap-wheel" aria-label="Published gap wheels">
+        <p class="sub"><strong>Unofficial gap wheels available</strong> for ${matches.map(esc).join(", ")}. These wheels are not provided by the package maintainers.
+        <a href="https://wheelgap.github.io/wheels/" target="_blank" rel="noopener">How they are built</a>.</p>
+        <p class="sub">Install: <code>pip install --extra-index-url ${GAP_WHEEL_INDEX} ${esc(p.name)}==${esc(p.version)}</code></p>
+      </section>` : "";
   const platforms = Object.keys(PLATFORM_NAMES).filter((pl) => state.data.targets.some((t) => t.platform === pl));
   const cell = (py, pl) => {
     const i = targetIndex(py, pl);
@@ -789,7 +801,8 @@ function buildPackageCardHTML(p, extra = null, pinNote = "") {
     const s = p.results[i];
     const detail = s === "bundled" && extra ? bundledDetail(extra[state.data.targets[i].label]) : "";
     const small = detail ? `<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">${esc(detail)}</small>` : "";
-    return `<td>${statusBadge(s)}${small}</td>`;
+    const wheelHint = available.has(state.data.targets[i].label) ? '<small class="bver" style="display:block">Unofficial gap wheel available below</small>' : "";
+    return `<td>${statusBadge(s)}${small}${wheelHint}</td>`;
   };
 
   return `<div class="card">
@@ -807,6 +820,7 @@ function buildPackageCardHTML(p, extra = null, pinNote = "") {
         .map((pl) => `<tr><th scope="row">${esc(PLATFORM_NAMES[pl][0])}</th>${pys.map((py) => cell(py, pl)).join("")}</tr>`)
         .join("")}</tbody>
     </table></div>
+    ${gapHint}
     ${!p.error && p.results.includes("bundled") ? `<p class="sub" style="margin:12px 0 0">${esc(BUNDLED_NOTE)}</p>` : ""}
     ${
       targetIndex(state.python, state.platform) < 0
@@ -846,6 +860,17 @@ function renderLookup(query, extra = null) {
 
   $("lookup").innerHTML = buildPackageCardHTML(p, extra, pinNote);
 
+  // One optional same-origin request, only when the selected release has an actual PyPI gap.
+  if (!gapWheelPromise && !pinNote && isPackageSpec(spec) && !p.error &&
+      p.results.some((status) => status === "source" || status === "missing")) {
+    gapWheelPromise = fetch("../wheels/data/gap-wheels.json")
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null)
+      .then((data) => {
+        gapWheelDoc = data;
+        if ($("search").value.trim() === query.trim()) renderLookup(query, extra);
+      });
+  }
 
   if (extra === null && !p.error && p.results.includes("bundled")) {
     const cached = bundledCache.get(q);
