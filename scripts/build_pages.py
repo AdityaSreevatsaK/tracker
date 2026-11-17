@@ -1,6 +1,6 @@
 """Build a static HTML page per package from a wheelgap coverage scan, plus a sitemap.
 
-    python scripts/build_pages.py data/coverage.json _site [notes_dir]
+    python scripts/build_pages.py data/coverage.json _site [notes_dir [gap-wheels.json]]
 
 Writes <site>/p/<name>/index.html for each package (PEP 503 canonical name) and
 <site>/sitemap.xml listing the main page, the repo checker and every package page, plus a
@@ -421,26 +421,31 @@ def lab_html(builds: list[dict]) -> str:
 
 
 def read_gap_wheels(path: Path | None) -> set[tuple[str, str, str]]:
-    """Read verified published wheels; absent or invalid data must not break page generation."""
+    """(canonical name, version, target) of each wheel in wheelgap/wheels' gap-wheels.json.
+    The file comes from another site, so a missing or unusable one gives no hints (with a
+    warning in the deploy log) rather than stopping the pages. build_gap_index.usable checks
+    each entry; if that legacy script is retired, move the check here."""
     if path is None:
         return set()
     try:
+        if path.stat().st_size > 10_000_000:
+            raise ValueError("too large")
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, UnicodeError):
+    except FileNotFoundError:
+        print("::warning::no gap-wheels.json, so package pages show no gap wheel hints")
         return set()
+    except (OSError, ValueError, RecursionError):
+        data = None
     if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("wheels"), list):
+        print("::warning::gap-wheels.json is unusable, so package pages show no gap wheel hints")
         return set()
-    matches = set()
-    for item in data["wheels"]:
-        if not build_gap_index.usable(item):
-            continue
-        name, version, target = item.get("name"), item.get("version"), item.get("target")
-        if not all(isinstance(value, str) and value for value in (name, version, target)):
-            continue
-        slug = canonical(name)
-        if SAFE_NAME.fullmatch(slug):
-            matches.add((slug, version, target))
-    return matches
+    return {
+        (canonical(item["name"]), item["version"], item["target"])
+        for item in data["wheels"]
+        if build_gap_index.usable(item)
+        and isinstance(item.get("version"), str)
+        and isinstance(item.get("target"), str)
+    }
 
 
 def page(
@@ -460,7 +465,8 @@ def page(
     found is pyodide_locks.releases(scan): the Pyodide release behind each Python's bundled cells.
     campaigns pairs each membership status with its loaded campaign. tree_badge says whether
     build_badges writes badge/<name>-tree.json, so the page shows its snippet too.
-    builds holds the package's build lab results."""
+    builds holds the package's build lab results. gap_wheels holds (canonical name, version,
+    target) of the published gap wheels (read_gap_wheels)."""
     found = found or {}
     bundled = pyodide_locks.bundled(package, scan["targets"], found)
     way_out = package.get("way_out", {})
@@ -520,11 +526,7 @@ def page(
             v = build_lab.lab_verdict(r)
             detail = f"{v['text']}. {detail}" if detail else v["text"]
         if targets[i]["label"] in gap_targets:
-            command = (
-                "pip install --extra-index-url https://wheelgap.github.io/wheels/simple/ "
-                f"{canonical(name)}=={version}"
-            )
-            detail = f"{detail} · Gap wheel available: {command}" if detail else f"Gap wheel available: {command}"
+            detail = f"{detail} · Gap wheel available (see below)" if detail else "Gap wheel available (see below)"
         small = f'<small class="bver">{e(detail)}</small>' if detail else ""
         return f'<td><span class="status s-{e(s)}">{e(STATUS_TEXT.get(s, s))}</span>{small}</td>'
 
@@ -561,10 +563,16 @@ def page(
     )
     install_section = install_html(package.get("install", {}))
     gap_section = (
-        '    <section class="notes"><h2>Published gap wheels</h2>'
-        '<p>A verified gap wheel is available for the highlighted target(s). '
-        '<a href="https://wheelgap.github.io/wheels/">View the gap wheel index</a>.</p></section>\n'
-        if gap_targets else ""
+        '    <section class="notes"><h2>Gap wheels</h2>\n'
+        f"      <p>wheelgap publishes an unofficial wheel of {e(name)} {e(version)} for "
+        f"{e(', '.join(sorted(gap_targets)))}, built from the PyPI sdist. It isn't from the "
+        "package's maintainers.</p>\n"
+        "      <pre><code>pip install --extra-index-url https://wheelgap.github.io/wheels/simple/ "
+        f"{e(canonical(name))}=={e(version)}</code></pre>\n"
+        '      <p><a href="https://wheelgap.github.io/wheels/">About the gap wheels</a></p>\n'
+        "    </section>\n"
+        if gap_targets
+        else ""
     )
     # Only where the cell still says source: a wheel uploaded since the lab ran (or a target the scan dropped) makes
     # that result old news, not something to show.
@@ -633,7 +641,8 @@ def build(
     """Write the pages and the sitemap; notes come from notes_dir, or none when it is None.
     root holds pyodide/locks.json and the lock files it names.
     config_path defaults to campaigns.toml beside the scan's data directory.
-    builds_path is the build lab's data/builds.json (None: no lab results)."""
+    builds_path is the build lab's data/builds.json (None: no lab results).
+    gap_wheels_path is wheelgap/wheels' gap-wheels.json (None or unusable: no gap wheel hints)."""
     scan = json.loads(coverage_path.read_text(encoding="utf-8"))
     if scan.get("schema") != SCAN_SCHEMA:
         sys.exit(f"build_pages: coverage.json schema {scan.get('schema')!r}, expected {SCAN_SCHEMA}")
