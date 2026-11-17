@@ -126,7 +126,7 @@ def build(coverage_path: Path, wanted_path: Path, site: Path, config_path: Path 
         if platform in lab_platforms:
             extras += '<p><a href="../../#lab-section">See build lab results</a> for this platform.</p>'
 
-        title = f"Python packages without {friendly} wheels"
+        title = f"Python {python} packages without {friendly} wheels"
         content = (
             f"<section><h2>Most-wanted wheels for Python {e(python)}</h2>{table}{extras}"
             '<p><a href="../../">Search every package</a></p></section>'
