@@ -50,8 +50,10 @@ function statusBadge(status) {
 
 // pyodide: data/pyodide.json through pyodideReleases(), {python: {pyodide, lock}} for each pinned Pyodide release.
 const bundledCache = new Map(); // canonical name -> bundledInfo() of its data/packages/<name>.json
-let gapWheelDoc = null;
+let gapWheelDoc = null; // wheelgap/wheels' data/gap-wheels.json, once fetched (null if it couldn't be read)
 let gapWheelPromise = null;
+// The pip index is absolute, but the list is fetched as ../wheels/data/gap-wheels.json: that relative path assumes
+// this site and the wheels site share wheelgap.github.io (tracker at /tracker/, wheels at /wheels/).
 const GAP_WHEEL_INDEX = "https://wheelgap.github.io/wheels/simple/";
 
 const state = {
@@ -788,11 +790,13 @@ function buildPackageCardHTML(p, extra = null, pinNote = "") {
   const pys = pythons();
   const matches = !pinNote ? gapWheelTargets(gapWheelDoc, p, state.data.targets) : [];
   const available = new Set(matches);
+  // Same words as the package pages' "Gap wheels" section (scripts/build_pages.py).
   const gapHint = matches.length
-    ? `<section class="card-gap-wheel" aria-label="Published gap wheels">
-        <p class="sub"><strong>Unofficial gap wheels available</strong> for ${matches.map(esc).join(", ")}. These wheels are not provided by the package maintainers.
-        <a href="https://wheelgap.github.io/wheels/" target="_blank" rel="noopener">How they are built</a>.</p>
-        <p class="sub">Install: <code>pip install --extra-index-url ${GAP_WHEEL_INDEX} ${esc(p.name)}==${esc(p.version)}</code></p>
+    ? `<section class="card-gap-wheel" aria-label="Gap wheels" style="margin-top:12px"><h4>Gap wheels</h4>
+        <p class="sub">wheelgap publishes an unofficial wheel of ${esc(p.name)} ${esc(p.version)} for ${matches.map(esc).join(", ")},
+        built from the PyPI sdist. It isn't from the package's maintainers.</p>
+        <p class="sub"><code>pip install --extra-index-url ${GAP_WHEEL_INDEX} ${esc(canonicalName(p.name))}==${esc(p.version)}</code></p>
+        <p class="sub"><a href="https://wheelgap.github.io/wheels/" target="_blank" rel="noopener">About the gap wheels</a></p>
       </section>` : "";
   const platforms = Object.keys(PLATFORM_NAMES).filter((pl) => state.data.targets.some((t) => t.platform === pl));
   const cell = (py, pl) => {
@@ -801,7 +805,7 @@ function buildPackageCardHTML(p, extra = null, pinNote = "") {
     const s = p.results[i];
     const detail = s === "bundled" && extra ? bundledDetail(extra[state.data.targets[i].label]) : "";
     const small = detail ? `<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">${esc(detail)}</small>` : "";
-    const wheelHint = available.has(state.data.targets[i].label) ? '<small class="bver" style="display:block">Unofficial gap wheel available below</small>' : "";
+    const wheelHint = available.has(state.data.targets[i].label) ? '<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">Unofficial gap wheel available below</small>' : "";
     return `<td>${statusBadge(s)}${small}${wheelHint}</td>`;
   };
 
@@ -820,8 +824,8 @@ function buildPackageCardHTML(p, extra = null, pinNote = "") {
         .map((pl) => `<tr><th scope="row">${esc(PLATFORM_NAMES[pl][0])}</th>${pys.map((py) => cell(py, pl)).join("")}</tr>`)
         .join("")}</tbody>
     </table></div>
-    ${gapHint}
     ${!p.error && p.results.includes("bundled") ? `<p class="sub" style="margin:12px 0 0">${esc(BUNDLED_NOTE)}</p>` : ""}
+    ${gapHint}
     ${
       targetIndex(state.python, state.platform) < 0
         ? ""
@@ -868,8 +872,14 @@ function renderLookup(query, extra = null) {
       .catch(() => null)
       .then((data) => {
         gapWheelDoc = data;
-        if ($("search").value.trim() === query.trim()) renderLookup(query, extra);
-      });
+        // Re-render whatever the lookup shows now (the list covers every package), with its bundled details if
+        // they've arrived since, never this call's possibly stale `extra`.
+        const current = $("search").value.trim();
+        if (data && current && $("lookup").innerHTML) {
+          renderLookup(current, bundledCache.get(canonicalName(splitSpec(current)[0])) ?? null);
+        }
+      })
+      .catch(() => {});
   }
 
   if (extra === null && !p.error && p.results.includes("bundled")) {

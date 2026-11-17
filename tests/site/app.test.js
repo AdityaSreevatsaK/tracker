@@ -233,6 +233,7 @@ async function loadPage(hash, gapWheelIndex = null) {
     },
     fetch: async (url) => {
       if (url === "../wheels/data/gap-wheels.json") {
+        if (typeof gapWheelIndex === "function") return gapWheelIndex(); // a test's own failing response
         return { ok: gapWheelIndex !== null, json: async () => gapWheelIndex };
       }
       const file = path.join(ROOT, url);
@@ -345,20 +346,33 @@ test("lookup offers a verified same-release gap wheel without changing the PyPI 
   const page = await loadPage(`#package=${pkg.name}`, doc);
   await new Promise((resolve) => setImmediate(resolve));
   const html = page.get("lookup").innerHTML;
-  assert.match(html, /Unofficial gap wheels available/);
-  assert.match(html, /pip install --extra-index-url https:\/\/wheelgap\.github\.io\/wheels\/simple\//);
-  assert.match(html, /not provided by the package maintainers/);
+  const re = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert.match(html, /<h4>Gap wheels<\/h4>/);
+  assert.match(html, new RegExp(`unofficial wheel of ${re(pkg.name)} ${re(pkg.version)} for ${re(data.targets[index].label)},`));
+  assert.match(html, /built from the PyPI sdist\. It isn't from the package's maintainers\./);
+  const canonical = pkg.name.toLowerCase().replace(/[-_.]+/g, "-");
+  assert.match(html, new RegExp(`pip install --extra-index-url https://wheelgap\\.github\\.io/wheels/simple/ ${re(canonical)}==${re(pkg.version)}<`));
+  assert.match(html, /About the gap wheels/);
+  assert.match(html, /<small class="bver" style="[^"]*color:var\(--text-muted\)[^"]*">Unofficial gap wheel available below<\/small>/);
   assert.match(html, /from source|can&#39;t install/);
 
   const wrong = await loadPage(`#package=${pkg.name}==0.0.1`, doc);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.doesNotMatch(wrong.get("lookup").innerHTML, /Unofficial gap wheels available/);
+  assert.doesNotMatch(wrong.get("lookup").innerHTML, /Gap wheels|gap wheel available/);
 });
 
-test("missing gap-wheel data never prevents the normal lookup (#129)", async () => {
+test("missing or unreadable gap-wheel data never prevents the normal lookup (#129)", async () => {
   const pkg = coverage().packages.find((p) => p.results.includes("source"));
-  const page = await loadPage(`#package=${pkg.name}`, { schema: 0, wheels: [] });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.match(page.get("lookup").innerHTML, /Package page/);
-  assert.doesNotMatch(page.get("lookup").innerHTML, /Unofficial gap wheels available/);
+  const failures = {
+    "an unusable document": { schema: 0, wheels: [] },
+    "a body that isn't JSON": () => ({ ok: true, json: async () => { throw new SyntaxError("bad JSON"); } }),
+    "a failed request": async () => { throw new TypeError("network down"); },
+  };
+  for (const [what, response] of Object.entries(failures)) {
+    const page = await loadPage(`#package=${pkg.name}`, response);
+    await new Promise((resolve) => setImmediate(resolve));
+    const html = page.get("lookup").innerHTML;
+    assert.match(html, /Package page/, what);
+    assert.doesNotMatch(html, /Gap wheels|gap wheel available/, what);
+  }
 });
