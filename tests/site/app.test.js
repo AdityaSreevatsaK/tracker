@@ -210,7 +210,7 @@ function element() {
   };
 }
 
-async function loadPage(hash) {
+async function loadPage(hash, gapWheelIndex = null) {
   const elements = new Map();
   const location = { hash };
   const get = (id) => {
@@ -232,6 +232,9 @@ async function loadPage(hash) {
       createElement: element,
     },
     fetch: async (url) => {
+      if (url === "../wheels/data/gap-wheels.json") {
+        return { ok: gapWheelIndex !== null, json: async () => gapWheelIndex };
+      }
       const file = path.join(ROOT, url);
       if (!/^data\/[a-z]+\.json$/.test(url) || !fs.existsSync(file)) return { ok: false, json: async () => null };
       const json = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -328,4 +331,34 @@ test("an invalid pin never reaches the checker's command (#57)", async () => {
   for (const id of ["omni-answer", "omni-minimized-summary", "lookup"]) {
     assert.doesNotMatch(page.get(id).innerHTML, /evil\.example/, id);
   }
+});
+
+test("lookup offers a verified same-release gap wheel without changing the PyPI status (#129)", async () => {
+  const data = coverage();
+  const pkg = data.packages.find((p) => p.results.some((v) => v === "source" || v === "missing"));
+  assert.ok(pkg);
+  const index = pkg.results.findIndex((v) => v === "source" || v === "missing");
+  const doc = { schema: 1, wheels: [{
+    name: pkg.name, version: pkg.version, target: data.targets[index].label,
+    wheel: "trusted-1.0-cp314.whl", sha256: "a".repeat(64),
+  }] };
+  const page = await loadPage(`#package=${pkg.name}`, doc);
+  await new Promise((resolve) => setImmediate(resolve));
+  const html = page.get("lookup").innerHTML;
+  assert.match(html, /Unofficial gap wheels available/);
+  assert.match(html, /pip install --extra-index-url https:\/\/wheelgap\.github\.io\/wheels\/simple\//);
+  assert.match(html, /not provided by the package maintainers/);
+  assert.match(html, /from source|can&#39;t install/);
+
+  const wrong = await loadPage(`#package=${pkg.name}==0.0.1`, doc);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.doesNotMatch(wrong.get("lookup").innerHTML, /Unofficial gap wheels available/);
+});
+
+test("missing gap-wheel data never prevents the normal lookup (#129)", async () => {
+  const pkg = coverage().packages.find((p) => p.results.includes("source"));
+  const page = await loadPage(`#package=${pkg.name}`, { schema: 0, wheels: [] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(page.get("lookup").innerHTML, /Package page/);
+  assert.doesNotMatch(page.get("lookup").innerHTML, /Unofficial gap wheels available/);
 });
