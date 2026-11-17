@@ -90,6 +90,37 @@ function bundledInfo(raw) {
   return out;
 }
 
+// Read only matching, checked whole-tree results from generated package JSON. No HTML or untrusted URLs here.
+function lookupInstallData(raw, pkg, targets) {
+  if (!raw || raw.schema !== 1 || !pkg || !isPackageName(pkg.name) ||
+      typeof pkg.version !== "string" ||
+      raw.name !== pkg.name.toLowerCase().replace(/[-_.]+/g, "-") ||
+      raw.version !== pkg.version || !Array.isArray(targets)) return [];
+  const install = raw.install && typeof raw.install === "object" && !Array.isArray(raw.install) ? raw.install : {};
+  const hints = raw.way_out && typeof raw.way_out === "object" && !Array.isArray(raw.way_out) ? raw.way_out : {};
+  return targets.filter((target) => target && typeof target.label === "string").map((target) => {
+    const row = Object.hasOwn(install, target.label) ? install[target.label] : null;
+    const status = row && ["wheel", "source", "missing", "not_checked"].includes(row.status)
+      ? row.status : "not_checked";
+    const blockers = status !== "not_checked" && row && Array.isArray(row.blockers) ? row.blockers.slice(0, 8)
+      .filter((blocker) => blocker && typeof blocker.name === "string" && blocker.name.length < 200 &&
+        ["source", "missing"].includes(blocker.status))
+      .map((blocker) => ({
+        name: blocker.name,
+        version: typeof blocker.version === "string" && blocker.version.length < 80 ? blocker.version : null,
+        status: blocker.status,
+        via: Array.isArray(blocker.via) ? blocker.via.slice(0, 10)
+          .filter((name) => typeof name === "string" && name.length < 200) : [],
+      })) : [];
+    const hint = hints[target.label];
+    const wayOut = hint && ["source", "missing"].includes(pkg.results[targets.indexOf(target)]) &&
+      ["older", "newer"].includes(hint.kind) &&
+      typeof hint.release === "string" && PINNED_VERSION.test(hint.release)
+      ? { kind: hint.kind, release: hint.release } : null;
+    return { label: target.label, status, blockers, wayOut };
+  });
+}
+
 // The line under a bundled cell; same text as describe() in scripts/pyodide_locks.py.
 function bundledDetail(info) {
   if (!info || !isText(info.pyodide) || !isText(info.bundled_version)) return "";
@@ -149,7 +180,7 @@ function labVerdict(r) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, whyCommand, pyodideFooter,
+    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, lookupInstallData, whyCommand, pyodideFooter,
     labVerdict,
   };
 }
