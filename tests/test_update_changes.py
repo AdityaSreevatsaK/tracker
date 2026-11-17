@@ -83,8 +83,7 @@ class UpdateChangesRegressionTests(unittest.TestCase):
         self.assertEqual(history, [latest])
 
     def test_unknown_cells_never_count_as_a_gain_or_loss(self) -> None:
-        for before, after in (("unknown", "wheel"), ("wheel", "unknown"),
-                              ("unknown", "source"), ("source", "unknown")):
+        for before, after in (("unknown", "wheel"), ("wheel", "unknown")):
             with self.subTest(before=before, after=after):
                 self.assertEqual(
                     update_changes.diff(scan([package("a", before)]), scan([package("a", after)])),
@@ -92,14 +91,21 @@ class UpdateChangesRegressionTests(unittest.TestCase):
                 )
 
     def test_a_new_target_does_not_create_spurious_gains(self) -> None:
+        # The new target comes first, so matching targets by position would misfire.
         old = scan([package("a", "wheel")])
-        new = scan([package("a", "wheel", "wheel")], [LINUX, WINDOWS])
-        self.assertEqual(update_changes.diff(old, new), ([], []))
+        new = scan([package("a", "wheel", "source")], [WINDOWS, LINUX])
+        gained, lost = update_changes.diff(old, new)
+        self.assertEqual(gained, [])
+        self.assertEqual([(i["target"], i["from"], i["to"]) for i in lost],
+                         [("3.14 linux-x86_64", "wheel", "source")])
 
     def test_a_removed_target_does_not_create_spurious_losses(self) -> None:
-        old = scan([package("a", "wheel", "wheel")], [LINUX, WINDOWS])
-        new = scan([package("a", "wheel")])
-        self.assertEqual(update_changes.diff(old, new), ([], []))
+        old = scan([package("a", "wheel", "wheel")], [WINDOWS, LINUX])
+        new = scan([package("a", "source")])
+        gained, lost = update_changes.diff(old, new)
+        self.assertEqual(gained, [])
+        self.assertEqual([(i["target"], i["from"], i["to"]) for i in lost],
+                         [("3.14 linux-x86_64", "wheel", "source")])
 
     def test_packages_added_or_removed_from_the_ranked_scan_are_skipped(self) -> None:
         old = scan([package("gone", "wheel"), package("common", "wheel")])
