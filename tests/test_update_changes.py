@@ -10,7 +10,6 @@ from pathlib import Path
 
 from scripts import update_changes
 
-
 TODAY = "2026-11-17"
 LINUX = {"label": "3.14 linux-x86_64", "python": "3.14", "platform": "linux-x86_64"}
 WINDOWS = {"label": "3.14 win-arm64", "python": "3.14", "platform": "win-arm64"}
@@ -64,13 +63,15 @@ class UpdateChangesRegressionTests(unittest.TestCase):
         self.assertEqual(history[-1]["lost"][0]["name"], "a")
 
     def test_same_day_loss_then_regain_disappears(self) -> None:
-        first = scan([package("a", "wheel")])
-        second = scan([package("a", "source")])
-        third = scan([package("a", "wheel")])
+        # b's loss isn't reversed, so it must survive the merge: only a's round trip cancels out.
+        first = scan([package("a", "wheel"), package("b", "wheel")])
+        second = scan([package("a", "source"), package("b", "source")])
+        third = scan([package("a", "wheel"), package("b", "source")])
         first_entry, _ = self.record(first, second)
-        self.assertEqual(len(first_entry["lost"]), 1)
+        self.assertEqual(len(first_entry["lost"]), 2)
         latest, history = self.record(second, third)
-        self.assertEqual(latest, {"date": TODAY, "gained": [], "lost": []})
+        b_lost = {"name": "b", "version": "1.0", "target": "3.14 linux-x86_64", "from": "wheel", "to": "source"}
+        self.assertEqual(latest, {"date": TODAY, "gained": [], "lost": [b_lost]})
         self.assertEqual(history, [latest])
 
     def test_same_day_regain_then_loss_disappears(self) -> None:
@@ -100,7 +101,8 @@ class UpdateChangesRegressionTests(unittest.TestCase):
                          [("3.14 linux-x86_64", "wheel", "source")])
 
     def test_a_removed_target_does_not_create_spurious_losses(self) -> None:
-        old = scan([package("a", "wheel", "wheel")], [WINDOWS, LINUX])
+        # Different statuses per target, so matching targets by position would find no loss.
+        old = scan([package("a", "source", "wheel")], [WINDOWS, LINUX])
         new = scan([package("a", "source")])
         gained, lost = update_changes.diff(old, new)
         self.assertEqual(gained, [])
