@@ -103,7 +103,7 @@ function gapWheelTargets(raw, packageInfo, targets) {
     if (!item || typeof item !== "object" || !isPackageName(item.name) ||
         typeof item.version !== "string" || item.version !== packageInfo.version ||
         typeof item.target !== "string" || item.target.length > 100 ||
-        typeof item.wheel !== "string" || !/^[A-Za-z0-9._-]{1,200}\\.whl$/.test(item.wheel) ||
+        typeof item.wheel !== "string" || !/^[A-Za-z0-9._-]{1,200}\.whl$/.test(item.wheel) ||
         typeof item.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(item.sha256)) continue;
     if (canonical(item.name) === wanted) available.add(item.target);
   }
