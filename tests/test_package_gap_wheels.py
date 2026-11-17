@@ -12,7 +12,8 @@ TARGETS = [
     {"label": "3.14 win-arm64", "platform": "win-arm64", "python": "3.14"},
     {"label": "3.14 linux-x86_64", "platform": "linux-x86_64", "python": "3.14"},
 ]
-ENTRY = {"name": "Demo_Pkg", "version": "1.2", "target": "3.14 win-arm64"}
+ENTRY = {"name": "Demo_Pkg", "version": "1.2", "target": "3.14 win-arm64",
+         "wheel": "demo_pkg-1.2-cp314-cp314-win_arm64.whl", "sha256": "a" * 64}
 
 
 def scan(statuses=("source", "wheel"), *, version="1.2"):
@@ -73,6 +74,8 @@ class GapWheelPageTests(unittest.TestCase):
 
     def test_malformed_or_missing_index_is_ignored(self):
         self.assertEqual(build_pages.read_gap_wheels(self.index), set())
+        # A malformed wheel record must never be advertised as published.
+        self.assertEqual(self.write({"schema": 1, "wheels": [{**ENTRY, "sha256": "../bad"}]}), set())
         for invalid in ({}, {"schema": 5, "wheels": [ENTRY]},
                         {"schema": 1, "wheels": "not a list"},
                         {"schema": 1, "wheels": [None, {"name": "x"}]}):
